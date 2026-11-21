@@ -1,15 +1,17 @@
-// =========================================================================
-// FIREBASE / FIRESTORE CONFIGURATION
-// =========================================================================
-// Replace the values below with your Firebase project configuration.
-// You can find these in Firebase Console -> Project Settings -> General -> Your apps -> Web app.
-// Alternatively, you can paste this config directly in the web app UI by tapping "Cloud DB" in the header.
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
-window.FIREBASE_CONFIG = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyDO6ybdukLdymyYBvtOa9Lm6Zw6I1XBZ1c",
+  authDomain: "tank-sudda-operations-abdullah.firebaseapp.com",
+  projectId: "tank-sudda-operations-abdullah",
+  storageBucket: "tank-sudda-operations-abdullah.firebasestorage.app",
+  messagingSenderId: "907564043320",
+  appId: "1:907564043320:web:11d2c9ff667e4f645beacd"
 };
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);

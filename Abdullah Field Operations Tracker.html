@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abdullah — Daily Field & Operations Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Firebase Compat SDKs (CDN) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <!-- External Firebase Config File -->
+    <script src="./firebase-config.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Custom scrollbar for clean UI */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #eff6ff;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #bfdbfe;
+            border-radius: 9999px;
+        }
+        /* Print styles for management audit sheets */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                background: #ffffff !important;
+            }
+            .print-shadow-none {
+                box-shadow: none !important;
+                border: 1px solid #e2e8f0 !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-blue-50/40 text-slate-800 min-h-screen flex flex-col pb-12">
+
+    <!-- Compact Mobile-First Header -->
+    <header class="bg-blue-950 text-white sticky top-0 z-30 shadow-md no-print">
+        <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-9 h-9 rounded-xl bg-blue-600 border border-blue-400/40 flex items-center justify-center font-extrabold text-sm text-white shrink-0">
+                    TS
+                </div>
+                <div class="min-w-0">
+                    <h1 class="font-bold text-sm sm:text-base truncate">Abdullah — Field Tracker</h1>
+                    <p class="text-[11px] text-blue-200 truncate">Tank Sudha &amp; Euro Motors • No log = No work</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-1.5 shrink-0">
+                <!-- Sync Status Pill & Modal Trigger -->
+                <button type="button" id="syncStatusBtn" onclick="openDbModal()" title="Firestore Database & Cloud Sync Settings" class="text-[11px] font-semibold bg-blue-900/90 hover:bg-blue-800 text-blue-200 border border-blue-700/60 px-2 py-1.5 rounded-lg transition active:scale-95 flex items-center gap-1.5">
+                    <span id="syncDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+                    <span id="syncLabel" class="hidden sm:inline">Local</span>
+                </button>
+
+                <input type="date" id="trackingDate" class="bg-blue-900 text-white text-xs rounded-lg px-2.5 py-1.5 border border-blue-800 focus:outline-none focus:border-blue-400">
+                <button type="button" onclick="loadDemoData()" class="text-[11px] font-semibold bg-white text-blue-900 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg transition active:scale-95">
+                    Demo
+                </button>
+            </div>
+        </div>
+
+        <!-- 2-Step Thumb Navigation -->
+        <nav class="bg-blue-900 border-t border-blue-800">
+            <div class="max-w-3xl mx-auto px-3 py-2 grid grid-cols-2 gap-2">
+                <button type="button" onclick="switchTab('morning')" id="tab-morning" class="py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 text-white shadow-sm flex items-center justify-center gap-2 transition">
+                    <span>1. Morning Plan</span>
+                    <span id="badge-plan-count" class="px-2 py-0.5 rounded-full text-[11px] bg-blue-950/40 text-white">0</span>
+                </button>
+                <button type="button" onclick="switchTab('field')" id="tab-field" class="py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold bg-blue-950/50 text-blue-200 hover:text-white flex items-center justify-center gap-2 transition">
+                    <span>2. Field Log &amp; EOD</span>
+                    <span id="badge-done-count" class="px-2 py-0.5 rounded-full text-[11px] bg-blue-950/60 text-blue-100">0 Logged</span>
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Single-Column Thumb-Friendly Workspace -->
+    <main class="flex-1 max-w-3xl w-full mx-auto px-3 sm:px-4 pt-4 space-y-4">
+
+        <!-- Live Accountability Banner (Always Visible) -->
+        <div id="accountabilityBanner" class="rounded-2xl p-3.5 border flex items-center justify-between gap-3 transition-colors bg-white border-blue-200 text-blue-950 shadow-2xs">
+            <div class="flex items-center gap-2.5">
+                <span id="accountabilityDot" class="w-3 h-3 rounded-full bg-blue-500 shrink-0 animate-pulse"></span>
+                <div>
+                    <p id="accountabilityTitle" class="text-xs sm:text-sm font-bold">0 Activities Logged Today</p>
+                    <p id="accountabilitySub" class="text-[11px] text-blue-700/80">Tap activities below to record field work.</p>
+                </div>
+            </div>
+            <span id="adherencePill" class="px-2.5 py-1 rounded-xl text-xs font-extrabold bg-blue-50 border border-blue-200 text-blue-700 shrink-0">
+                0% Plan
+            </span>
+        </div>
+
+        <!-- ========================================================= -->
+        <!-- STEP 1: 15-SECOND MORNING PLAN (1-TAP PRESETS)            -->
+        <!-- ========================================================= -->
+        <section id="view-morning" class="space-y-4">
+
+            <!-- Quick-Tap Activity Pad -->
+            <div class="bg-white border border-blue-100 rounded-2xl p-4 shadow-2xs space-y-4">
+                <div>
+                    <h2 class="text-sm sm:text-base font-bold text-blue-950">Tap Today's Plan</h2>
+                    <p class="text-xs text-slate-500">1 tap adds a task — no typing needed.</p>
+                </div>
+
+                <!-- Tank Sudha 1-Tap Buttons (Solid Blue Accent) -->
+                <div class="space-y-2">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                        <span class="text-xs font-extrabold uppercase tracking-wider text-blue-900">Tank Sudha</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <button type="button" onclick="quickAddPlan('Tank Sudha', null, 'tank-inspection')" class="p-3 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 active:scale-95 text-left transition flex items-center justify-between sm:flex-col sm:items-start gap-1">
+                            <span class="text-xs sm:text-sm font-bold text-blue-950">+ Site Inspection</span>
+                            <span class="text-[11px] text-blue-700">Pre-order &amp; team specs</span>
+                        </button>
+                        <button type="button" onclick="quickAddPlan('Tank Sudha', null, 'tank-pitching')" class="p-3 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 active:scale-95 text-left transition flex items-center justify-between sm:flex-col sm:items-start gap-1">
+                            <span class="text-xs sm:text-sm font-bold text-blue-950">+ Brand Pitching</span>
+                            <span class="text-[11px] text-blue-700">Awareness &amp; leads</span>
+                        </button>
+                        <button type="button" onclick="quickAddPlan('Tank Sudha', null, 'tank-order-qc')" class="p-3 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 active:scale-95 text-left transition flex items-center justify-between sm:flex-col sm:items-start gap-1">
+                            <span class="text-xs sm:text-sm font-bold text-blue-950">+ Order Quality Check</span>
+                            <span class="text-[11px] text-blue-700">Verify ongoing standard</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Euro Motors 1-Tap Buttons (Crisp White + Blue Outline Accent) -->
+                <div class="space-y-2.5 pt-3 border-t border-blue-100">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full border-2 border-blue-600 bg-white"></span>
+                            <span class="text-xs font-extrabold uppercase tracking-wider text-blue-900">Euro Motors</span>
+                        </div>
+                        <!-- Branch Quick Switcher -->
+                        <div class="inline-flex rounded-xl bg-blue-50 border border-blue-100 p-1 gap-1">
+                            <button type="button" onclick="selectBranch('Havlock')" class="branch-pill px-3 py-1 rounded-lg text-xs font-bold bg-blue-600 text-white shadow-2xs transition" data-branch="Havlock">Havlock</button>
+                            <button type="button" onclick="selectBranch('Dehiwala')" class="branch-pill px-3 py-1 rounded-lg text-xs font-bold text-blue-800 hover:bg-blue-100 transition" data-branch="Dehiwala">Dehiwala</button>
+                            <button type="button" onclick="selectBranch('Kadawala')" class="branch-pill px-3 py-1 rounded-lg text-xs font-bold text-blue-800 hover:bg-blue-100 transition" data-branch="Kadawala">Kadawala</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <button type="button" onclick="quickAddPlan('Euro Motors', state.selectedBranch, 'euro-compliance')" class="p-3 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 active:scale-95 text-left transition flex items-center justify-between sm:flex-col sm:items-start gap-1">
+                            <span class="text-xs sm:text-sm font-bold text-blue-950">+ Quality &amp; Uniforms</span>
+                            <span class="text-[11px] text-blue-600"><span class="active-branch-label">Havlock</span> compliance</span>
+                        </button>
+                        <button type="button" onclick="quickAddPlan('Euro Motors', state.selectedBranch, 'euro-stock')" class="p-3 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 active:scale-95 text-left transition flex items-center justify-between sm:flex-col sm:items-start gap-1">
+                            <span class="text-xs sm:text-sm font-bold text-blue-950">+ Stock &amp; Ops Check</span>
+                            <span class="text-[11px] text-blue-600"><span class="active-branch-label">Havlock</span> stock levels</span>
+                        </button>
+                        <button type="button" onclick="quickAddPlan('Euro Motors', state.selectedBranch, 'euro-invoicing')" class="p-3 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 active:scale-95 text-left transition flex items-center justify-between sm:flex-col sm:items-start gap-1">
+                            <span class="text-xs sm:text-sm font-bold text-blue-950">+ Invoices → Finance</span>
+                            <span class="text-[11px] text-blue-600"><span class="active-branch-label">Havlock</span> &amp; payment follow-up</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Today's Selected Plan Queue -->
+            <div class="bg-white border border-blue-100 rounded-2xl p-4 shadow-2xs space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-extrabold uppercase tracking-wider text-blue-900">Today's Morning Plan (<span id="morningCountLabel">0</span>)</h3>
+                    <button type="button" id="btnResetDay" onclick="openClearModal()" class="hidden text-xs font-semibold text-blue-600 hover:underline">
+                        Clear All
+                    </button>
+                </div>
+
+                <div id="morningPlanList" class="space-y-2.5">
+                    <!-- Rendered dynamically -->
+                </div>
+            </div>
+
+            <!-- One-Tap Share Morning Plan to WhatsApp -->
+            <div class="bg-blue-600 text-white rounded-2xl p-4 shadow-sm space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <h3 class="font-bold text-sm sm:text-base">Share Morning Plan to Group</h3>
+                        <p class="text-xs text-blue-100">Copies your plan ready to paste in WhatsApp.</p>
+                    </div>
+                    <button type="button" onclick="copyReport('morningReportText', 'Morning Plan')" class="w-full sm:w-auto px-5 py-3 rounded-xl bg-white text-blue-700 hover:bg-blue-50 font-extrabold text-xs sm:text-sm shadow-2xs transition active:scale-95 flex items-center justify-center gap-2 shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                        Copy Morning Plan
+                    </button>
+                </div>
+
+                <details class="bg-blue-700/70 rounded-xl p-2.5">
+                    <summary class="text-xs font-semibold text-blue-100 cursor-pointer select-none">Preview Message</summary>
+                    <textarea id="morningReportText" readonly rows="7" class="w-full mt-2 p-3 rounded-lg bg-white text-slate-800 text-xs font-mono leading-relaxed focus:outline-none"></textarea>
+                </details>
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- STEP 2: LIVE FIELD CHECK-IN & EOD VERIFICATION            -->
+        <!-- ========================================================= -->
+        <section id="view-field" class="hidden space-y-4">
+
+            <!-- Planned Tasks: 1-Tap Check-In -->
+            <div class="bg-white border border-blue-100 rounded-2xl p-4 shadow-2xs space-y-3">
+                <div>
+                    <h2 class="text-sm sm:text-base font-bold text-blue-950">Planned Work — Tap "Done" in the Field</h2>
+                    <p class="text-xs text-slate-500">Each tap records the exact time automatically.</p>
+                </div>
+
+                <div id="fieldPlannedList" class="space-y-3">
+                    <!-- Rendered dynamically -->
+                </div>
+            </div>
+
+            <!-- Instant Field Log Pad (For Work Done Outside Morning Plan) -->
+            <div class="bg-white border border-blue-100 rounded-2xl p-4 shadow-2xs space-y-3">
+                <div>
+                    <h3 class="text-sm font-bold text-blue-950">Extra / Off-Plan Field Log</h3>
+                    <p class="text-xs text-slate-500">Did an unplanned visit? 1 tap logs it right now.</p>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <button type="button" onclick="quickLogOffPlan('Tank Sudha', 'Site Inspection')" class="p-2.5 rounded-xl border border-blue-200 bg-blue-50/60 hover:bg-blue-100 active:scale-95 text-left transition">
+                        <span class="block text-[10px] font-bold text-blue-700 uppercase">Tank Sudha</span>
+                        <span class="text-xs font-bold text-blue-950">+ Site Inspection</span>
+                    </button>
+                    <button type="button" onclick="quickLogOffPlan('Tank Sudha', 'Brand Pitching')" class="p-2.5 rounded-xl border border-blue-200 bg-blue-50/60 hover:bg-blue-100 active:scale-95 text-left transition">
+                        <span class="block text-[10px] font-bold text-blue-700 uppercase">Tank Sudha</span>
+                        <span class="text-xs font-bold text-blue-950">+ Brand Pitching</span>
+                    </button>
+                    <button type="button" onclick="quickLogOffPlan('Tank Sudha', 'Order Quality Check')" class="p-2.5 rounded-xl border border-blue-200 bg-blue-50/60 hover:bg-blue-100 active:scale-95 text-left transition">
+                        <span class="block text-[10px] font-bold text-blue-700 uppercase">Tank Sudha</span>
+                        <span class="text-xs font-bold text-blue-950">+ Order QC Check</span>
+                    </button>
+                    <button type="button" onclick="quickLogOffPlan('Euro Motors - Havlock', 'Branch Check')" class="p-2.5 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 active:scale-95 text-left transition">
+                        <span class="block text-[10px] font-bold text-blue-600 uppercase">Euro Motors</span>
+                        <span class="text-xs font-bold text-blue-950">+ Havlock Visit</span>
+                    </button>
+                    <button type="button" onclick="quickLogOffPlan('Euro Motors - Dehiwala', 'Branch Check')" class="p-2.5 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 active:scale-95 text-left transition">
+                        <span class="block text-[10px] font-bold text-blue-600 uppercase">Euro Motors</span>
+                        <span class="text-xs font-bold text-blue-950">+ Dehiwala Visit</span>
+                    </button>
+                    <button type="button" onclick="quickLogOffPlan('Euro Motors - Kadawala', 'Branch Check')" class="p-2.5 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 active:scale-95 text-left transition">
+                        <span class="block text-[10px] font-bold text-blue-600 uppercase">Euro Motors</span>
+                        <span class="text-xs font-bold text-blue-950">+ Kadawala Visit</span>
+                    </button>
+                    <button type="button" onclick="quickLogOffPlan('Euro Motors - Finance', 'Invoice Handover / Follow-up')" class="col-span-2 sm:col-span-3 p-2.5 rounded-xl border border-blue-200 bg-white hover:bg-blue-50 active:scale-95 text-center transition">
+                        <span class="text-xs font-bold text-blue-950">+ Log Euro Motors Invoice Handover / Payment Follow-up</span>
+                    </button>
+                </div>
+
+                <!-- Logged Off-Plan Items List -->
+                <div id="offPlanList" class="space-y-2 pt-1">
+                    <!-- Rendered dynamically -->
+                </div>
+            </div>
+
+            <!-- End of Day Summary & WhatsApp Copy -->
+            <div class="bg-blue-950 text-white rounded-2xl p-4 sm:p-5 shadow-md space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <h3 class="font-bold text-sm sm:text-base text-white">End of Day (EOD) Report</h3>
+                        <p class="text-xs text-blue-200">Timestamped log of completed, missed &amp; off-plan work.</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" onclick="copyReport('eodReportText', 'EOD Report')" class="flex-1 sm:flex-none px-4 py-3 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-extrabold text-xs sm:text-sm transition active:scale-95 flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                            Copy EOD Report
+                        </button>
+                        <button type="button" onclick="downloadTextAudit()" class="px-3 py-3 rounded-xl bg-blue-900 hover:bg-blue-800 text-blue-100 font-semibold text-xs border border-blue-800 transition">
+                            .TXT
+                        </button>
+                        <button type="button" onclick="window.print()" class="px-3 py-3 rounded-xl bg-blue-900 hover:bg-blue-800 text-blue-100 font-semibold text-xs border border-blue-800 transition no-print">
+                            PDF
+                        </button>
+                    </div>
+                </div>
+
+                <textarea id="eodReportText" readonly rows="11" class="w-full p-3.5 rounded-xl bg-blue-900/70 border border-blue-800 text-white text-xs font-mono leading-relaxed focus:outline-none"></textarea>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Custom Toast Notification -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+        <div class="bg-blue-950 text-white px-4 py-3 rounded-xl shadow-lg border border-blue-800 flex items-center gap-2.5 text-xs sm:text-sm font-semibold">
+            <span class="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0"></span>
+            <span id="toastMessage">Action recorded!</span>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div id="confirmModal" class="fixed inset-0 bg-blue-950/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-blue-100 space-y-4">
+            <h3 class="font-bold text-blue-950 text-base">Clear Today's Data?</h3>
+            <p class="text-xs text-slate-600 leading-relaxed">This will reset all planned and logged field activities for today.</p>
+            <div class="flex items-center justify-end gap-2 pt-1">
+                <button type="button" onclick="closeClearModal()" class="px-4 py-2 rounded-xl border border-blue-200 text-blue-900 font-semibold text-xs hover:bg-blue-50">
+                    Cancel
+                </button>
+                <button type="button" onclick="confirmClearPlan()" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700">
+                    Yes, Reset
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase / Firestore Settings Modal -->
+    <div id="dbModal" class="fixed inset-0 bg-blue-950/70 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-blue-100 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between pb-2 border-b border-blue-100">
+                <div class="flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-blue-600"></span>
+                    <h3 class="font-bold text-blue-950 text-base">Firestore Database Settings</h3>
+                </div>
+                <button type="button" onclick="closeDbModal()" class="text-slate-400 hover:text-slate-600 text-lg font-bold p-1">✕</button>
+            </div>
+
+            <!-- Current Connection Status -->
+            <div class="p-3 rounded-xl border border-blue-100 bg-blue-50/50 flex items-center justify-between">
+                <div>
+                    <span class="text-[11px] font-bold text-blue-900 uppercase">Live Database Status</span>
+                    <p id="dbModalStatusText" class="text-xs text-slate-700 font-semibold mt-0.5">Checking...</p>
+                </div>
+                <span id="dbModalStatusBadge" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-amber-100 text-amber-800">
+                    Local Only
+                </span>
+            </div>
+
+            <!-- Paste Config Form -->
+            <div class="space-y-2">
+                <label class="block text-xs font-bold text-slate-700">
+                    Firebase Config Object (JavaScript or JSON)
+                </label>
+                <p class="text-[11px] text-slate-500">
+                    Paste the config from Firebase Console: <i>Project Settings &gt; General &gt; Your apps &gt; Web app config</i>
+                </p>
+                <textarea id="firebaseConfigInput" rows="6" placeholder='{
+  "apiKey": "AIzaSy...",
+  "authDomain": "your-app.firebaseapp.com",
+  "projectId": "your-project-id",
+  "storageBucket": "your-app.appspot.com",
+  "messagingSenderId": "...",
+  "appId": "..."
+}' class="w-full p-2.5 rounded-xl border border-blue-200 text-xs font-mono text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-500 leading-relaxed"></textarea>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                <button type="button" onclick="resetToExternalConfig()" class="text-xs text-blue-600 hover:underline font-medium">
+                    Reload firebase-config.js
+                </button>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="closeDbModal()" class="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50">
+                        Close
+                    </button>
+                    <button type="button" onclick="saveCustomFirebaseConfig()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-2xs transition active:scale-95">
+                        Save &amp; Connect
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                <p class="font-bold text-slate-800">💡 Quick Setup Guide:</p>
+                <p>1. Go to <a href="https://console.firebase.google.com" target="_blank" class="text-blue-600 underline font-semibold">console.firebase.google.com</a> &gt; Create a project.</p>
+                <p>2. Create a <b>Firestore Database</b> in <b>Test Mode</b> (or set read/write rules to true).</p>
+                <p>3. Add a Web App, copy `firebaseConfig`, paste it above, and tap <b>Save &amp; Connect</b>.</p>
+                <p>Data will automatically sync across devices and work seamlessly offline!</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        // =========================================================================
+        // PRESET ROLE TEMPLATES (Zero-Typing Quick-Tap Definitions)
+        // =========================================================================
+        const PRESET_ROLES = {
+            "tank-inspection": {
+                label: "Site Inspection (Pre-Order)",
+                placeholder: "Optional: Client name / location (e.g., Nugegoda site)...",
+                checks: ["Site assessed before team", "Order details given to team"]
+            },
+            "tank-pitching": {
+                label: "Brand & Service Pitching",
+                placeholder: "Optional: Who was pitched (e.g., 2 contractors)...",
+                checks: ["Tank Sudha services pitched", "Contact/lead captured"]
+            },
+            "tank-order-qc": {
+                label: "Ongoing Order Quality Check",
+                placeholder: "Optional: Active order site name...",
+                checks: ["Tank Sudha standard met", "Team following specs"]
+            },
+            "euro-compliance": {
+                label: "Quality & Uniform Compliance",
+                placeholder: "Optional: Any uniform or quality issue noted...",
+                checks: ["Work quality OK", "Staff in uniform", "Branch compliance OK"]
+            },
+            "euro-stock": {
+                label: "Stock & Operations Check",
+                placeholder: "Optional: Any low-stock item noted...",
+                checks: ["Stock levels sufficient", "Smooth operations OK"]
+            },
+            "euro-invoicing": {
+                label: "Invoicing & Finance Follow-up",
+                placeholder: "Optional: Invoice count / payment status...",
+                checks: ["Invoices collected", "Handed to Finance", "Payment followed up"]
+            }
+        };
+
+        const MISSED_REASONS = [
+            "Client rescheduled",
+            "Delayed at prior site",
+            "Branch / Finance closed",
+            "Weather / Traffic"
+        ];
+
+        // =========================================================================
+        // IN-MEMORY ACTIVE STATE
+        // =========================================================================
+        let state = {
+            selectedBranch: "Havlock",
+            plannedTasks: [],
+            offPlanLogs: []
+        };
+
+        // Active tracking date string (YYYY-MM-DD)
+        let activeDate = "";
+
+        // =========================================================================
+        // FIRESTORE & SYNC LOGIC
+        // =========================================================================
+        let db = null;
+        let firestoreUnsubscribe = null;
+        let isWritingRemote = false;
+        let saveDebounceTimer = null;
+
+        function updateSyncStatus(status, message) {
+            const dot = document.getElementById("syncDot");
+            const label = document.getElementById("syncLabel");
+            const modalBadge = document.getElementById("dbModalStatusBadge");
+            const modalText = document.getElementById("dbModalStatusText");
+
+            if (status === "synced") {
+                dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+                label.textContent = "Synced";
+                modalBadge.className = "px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-emerald-100 text-emerald-800";
+                modalBadge.textContent = "Cloud Synced";
+                modalText.textContent = message || "Connected to Firestore. Auto-sync active.";
+            } else if (status === "saving") {
+                dot.className = "w-2 h-2 rounded-full bg-amber-300 animate-ping";
+                label.textContent = "Saving...";
+                modalBadge.className = "px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-amber-100 text-amber-800";
+                modalBadge.textContent = "Saving...";
+                modalText.textContent = "Pushing latest updates to Firestore...";
+            } else if (status === "offline") {
+                dot.className = "w-2 h-2 rounded-full bg-amber-400";
+                label.textContent = "Offline (Local)";
+                modalBadge.className = "px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-amber-100 text-amber-800";
+                modalBadge.textContent = "Offline";
+                modalText.textContent = message || "Firestore offline. Changes saved locally and will sync when reconnected.";
+            } else {
+                // not configured / local only
+                dot.className = "w-2 h-2 rounded-full bg-slate-400";
+                label.textContent = "Local";
+                modalBadge.className = "px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-slate-100 text-slate-700";
+                modalBadge.textContent = "Local Only";
+                modalText.textContent = message || "Firebase not configured. Storing in browser storage.";
+            }
+        }
+
+        function getEffectiveFirebaseConfig() {
+            // 1. Check local storage override first
+            const stored = localStorage.getItem("abdullah_custom_firebase_config");
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    if (parsed && parsed.projectId && parsed.projectId !== "YOUR_PROJECT_ID") {
+                        return parsed;
+                    }
+                } catch (e) {
+                    console.error("Invalid stored firebase config:", e);
+                }
+            }
+
+            // 2. Check window.FIREBASE_CONFIG from firebase-config.js
+            if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.projectId && window.FIREBASE_CONFIG.projectId !== "YOUR_PROJECT_ID") {
+                return window.FIREBASE_CONFIG;
+            }
+
+            return null;
+        }
+
+        function initFirebase() {
+            const config = getEffectiveFirebaseConfig();
+            if (!config) {
+                updateSyncStatus("local", "Firebase not configured. Storing in browser storage.");
+                return;
+            }
+
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(config);
+                }
+                db = firebase.firestore();
+
+                // Enable offline persistence if supported
+                db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+                    if (err.code === 'failed-precondition') {
+                        console.warn("Firestore persistence failed: Multiple tabs open");
+                    } else if (err.code === 'unimplemented') {
+                        console.warn("Firestore persistence not supported in this browser");
+                    }
+                });
+
+                updateSyncStatus("synced", `Connected to Firebase project: ${config.projectId}`);
+                listenToCurrentDate();
+            } catch (err) {
+                console.error("Firebase init error:", err);
+                updateSyncStatus("local", `Connection error: ${err.message}`);
+            }
+        }
+
+        function listenToCurrentDate() {
+            if (firestoreUnsubscribe) {
+                firestoreUnsubscribe();
+                firestoreUnsubscribe = null;
+            }
+
+            if (!db || !activeDate) return;
+
+            const docRef = db.collection("daily_logs").doc(activeDate);
+            firestoreUnsubscribe = docRef.onSnapshot({ includeMetadataChanges: true }, (doc) => {
+                if (isWritingRemote) return; // Ignore local write echo
+
+                if (doc.exists) {
+                    const remoteData = doc.data();
+                    if (remoteData) {
+                        state.selectedBranch = remoteData.selectedBranch || state.selectedBranch || "Havlock";
+                        state.plannedTasks = Array.isArray(remoteData.plannedTasks) ? remoteData.plannedTasks : [];
+                        state.offPlanLogs = Array.isArray(remoteData.offPlanLogs) ? remoteData.offPlanLogs : [];
+
+                        // Cache in localStorage as well
+                        saveToLocal(activeDate, state);
+
+                        renderAll();
+                        selectBranch(state.selectedBranch, false);
+                    }
+                }
+
+                if (doc.metadata.fromCache) {
+                    updateSyncStatus("offline", "Reading from local offline cache");
+                } else {
+                    updateSyncStatus("synced");
+                }
+            }, (err) => {
+                console.warn("Firestore snapshot error:", err);
+                updateSyncStatus("offline", "Network issue. Saved locally.");
+            });
+        }
+
+        function persistState(immediate = false) {
+            if (!activeDate) return;
+
+            // 1. Instant local persistence
+            saveToLocal(activeDate, state);
+
+            // 2. Debounced Firestore sync
+            if (!db) {
+                updateSyncStatus("local");
+                return;
+            }
+
+            updateSyncStatus("saving");
+
+            clearTimeout(saveDebounceTimer);
+            const doSave = () => {
+                isWritingRemote = true;
+                const payload = {
+                    date: activeDate,
+                    selectedBranch: state.selectedBranch,
+                    plannedTasks: state.plannedTasks,
+                    offPlanLogs: state.offPlanLogs,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    clientTimestamp: new Date().toISOString()
+                };
+
+                db.collection("daily_logs").doc(activeDate).set(payload, { merge: true })
+                    .then(() => {
+                        updateSyncStatus("synced");
+                    })
+                    .catch((err) => {
+                        console.error("Firestore save error:", err);
+                        updateSyncStatus("offline", "Saved to local cache (cloud write pending)");
+                    })
+                    .finally(() => {
+                        setTimeout(() => { isWritingRemote = false; }, 300);
+                    });
+            };
+
+            if (immediate) {
+                doSave();
+            } else {
+                saveDebounceTimer = setTimeout(doSave, 400);
+            }
+        }
+
+        function saveToLocal(dateStr, data) {
+            try {
+                localStorage.setItem(`abdullah_log_${dateStr}`, JSON.stringify(data));
+            } catch (e) {
+                console.warn("LocalStorage save failed:", e);
+            }
+        }
+
+        function loadFromLocal(dateStr) {
+            try {
+                const stored = localStorage.getItem(`abdullah_log_${dateStr}`);
+                if (stored) {
+                    return JSON.parse(stored);
+                }
+            } catch (e) {
+                console.warn("LocalStorage load failed:", e);
+            }
+            return null;
+        }
+
+        function handleDateChange(newDateStr) {
+            if (!newDateStr) return;
+            activeDate = newDateStr;
+
+            // 1. Try local cache first for instant UI response
+            const localCached = loadFromLocal(activeDate);
+            if (localCached) {
+                state.selectedBranch = localCached.selectedBranch || "Havlock";
+                state.plannedTasks = localCached.plannedTasks || [];
+                state.offPlanLogs = localCached.offPlanLogs || [];
+            } else {
+                state.selectedBranch = "Havlock";
+                state.plannedTasks = [];
+                state.offPlanLogs = [];
+            }
+
+            renderAll();
+            selectBranch(state.selectedBranch, false);
+
+            // 2. Bind Firestore real-time listener for this date
+            listenToCurrentDate();
+        }
+
+        // =========================================================================
+        // DATABASE MODAL LOGIC
+        // =========================================================================
+        function openDbModal() {
+            const modal = document.getElementById("dbModal");
+            const configInput = document.getElementById("firebaseConfigInput");
+            const currentConfig = getEffectiveFirebaseConfig();
+
+            if (currentConfig) {
+                configInput.value = JSON.stringify(currentConfig, null, 2);
+            } else if (window.FIREBASE_CONFIG) {
+                configInput.value = JSON.stringify(window.FIREBASE_CONFIG, null, 2);
+            }
+
+            modal.classList.remove("hidden");
+            modal.classList.add("flex");
+        }
+
+        function closeDbModal() {
+            const modal = document.getElementById("dbModal");
+            modal.classList.add("hidden");
+            modal.classList.remove("flex");
+        }
+
+        function saveCustomFirebaseConfig() {
+            const raw = document.getElementById("firebaseConfigInput").value.trim();
+            if (!raw) {
+                showToast("Please enter a Firebase config");
+                return;
+            }
+
+            let parsed = null;
+            try {
+                // Try JSON format
+                parsed = JSON.parse(raw);
+            } catch (e) {
+                // Try JS object format
+                try {
+                    const sanitized = raw.replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ');
+                    parsed = JSON.parse(sanitized);
+                } catch (e2) {
+                    showToast("Invalid JSON/JS config format");
+                    return;
+                }
+            }
+
+            if (!parsed || !parsed.projectId) {
+                showToast("Config must include at least projectId");
+                return;
+            }
+
+            localStorage.setItem("abdullah_custom_firebase_config", JSON.stringify(parsed));
+            showToast("Firebase configuration saved! Connecting...");
+            closeDbModal();
+
+            // Re-initialize Firebase
+            if (firebase.apps.length) {
+                firebase.app().delete().then(() => {
+                    initFirebase();
+                });
+            } else {
+                initFirebase();
+            }
+        }
+
+        function resetToExternalConfig() {
+            localStorage.removeItem("abdullah_custom_firebase_config");
+            showToast("Reset to firebase-config.js");
+            closeDbModal();
+            if (firebase.apps.length) {
+                firebase.app().delete().then(() => {
+                    initFirebase();
+                });
+            } else {
+                initFirebase();
+            }
+        }
+
+        // =========================================================================
+        // INITIALIZATION
+        // =========================================================================
+        window.addEventListener("DOMContentLoaded", () => {
+            const dateInput = document.getElementById("trackingDate");
+            const now = new Date();
+            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+            dateInput.value = todayStr;
+            activeDate = todayStr;
+
+            dateInput.addEventListener("change", (e) => {
+                handleDateChange(e.target.value);
+            });
+
+            // Load initial state
+            handleDateChange(todayStr);
+
+            // Initialize Firebase Firestore
+            initFirebase();
+        });
+
+        function getCurrentTimeStr() {
+            return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        }
+
+        // =========================================================================
+        // NAVIGATION & BRANCH SWITCHER
+        // =========================================================================
+        function switchTab(tab) {
+            const morningView = document.getElementById("view-morning");
+            const fieldView = document.getElementById("view-field");
+            const tabMorning = document.getElementById("tab-morning");
+            const tabField = document.getElementById("tab-field");
+
+            if (tab === "morning") {
+                morningView.classList.remove("hidden");
+                fieldView.classList.add("hidden");
+                tabMorning.className = "py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 text-white shadow-sm flex items-center justify-center gap-2 transition";
+                tabField.className = "py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold bg-blue-950/50 text-blue-200 hover:text-white flex items-center justify-center gap-2 transition";
+            } else {
+                morningView.classList.add("hidden");
+                fieldView.classList.remove("hidden");
+                tabField.className = "py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold bg-blue-600 text-white shadow-sm flex items-center justify-center gap-2 transition";
+                tabMorning.className = "py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold bg-blue-950/50 text-blue-200 hover:text-white flex items-center justify-center gap-2 transition";
+            }
+            renderAll();
+        }
+
+        function selectBranch(branch, shouldPersist = true) {
+            state.selectedBranch = branch;
+            document.querySelectorAll(".branch-pill").forEach(btn => {
+                if (btn.dataset.branch === branch) {
+                    btn.className = "branch-pill px-3 py-1 rounded-lg text-xs font-bold bg-blue-600 text-white shadow-2xs transition";
+                } else {
+                    btn.className = "branch-pill px-3 py-1 rounded-lg text-xs font-bold text-blue-800 hover:bg-blue-100 transition";
+                }
+            });
+            document.querySelectorAll(".active-branch-label").forEach(el => {
+                el.textContent = branch;
+            });
+            if (shouldPersist) {
+                persistState(false);
+            }
+        }
+
+        // =========================================================================
+        // 1-TAP MORNING PLAN ACTIONS
+        // =========================================================================
+        function quickAddPlan(brand, branch, roleKey) {
+            const preset = PRESET_ROLES[roleKey];
+            const id = "plan-" + Date.now() + "-" + Math.floor(Math.random() * 999);
+
+            state.plannedTasks.push({
+                id,
+                brand,
+                branch,
+                roleKey,
+                label: preset.label,
+                placeholder: preset.placeholder,
+                note: "",
+                status: "Pending", // Pending | Done | Missed
+                completedAt: null,
+                checks: preset.checks.map(c => ({ label: c, ok: true })),
+                missedReason: ""
+            });
+
+            const tag = branch ? `${brand} (${branch})` : brand;
+            showToast(`Added: ${tag} — ${preset.label}`);
+            renderAll();
+            persistState(true);
+        }
+
+        function updatePlanNote(id, value) {
+            const item = state.plannedTasks.find(t => t.id === id);
+            if (item) {
+                item.note = value;
+                renderReportsOnly();
+                persistState(false);
+            }
+        }
+
+        function removePlanItem(id) {
+            state.plannedTasks = state.plannedTasks.filter(t => t.id !== id);
+            renderAll();
+            persistState(true);
+        }
+
+        // =========================================================================
+        // 1-TAP FIELD CHECK-IN & OFF-PLAN LOGGING
+        // =========================================================================
+        function togglePlanDone(id) {
+            const item = state.plannedTasks.find(t => t.id === id);
+            if (!item) return;
+
+            if (item.status === "Done") {
+                item.status = "Pending";
+                item.completedAt = null;
+            } else {
+                item.status = "Done";
+                item.completedAt = getCurrentTimeStr();
+                item.missedReason = "";
+                showToast(`Verified Done at ${item.completedAt}`);
+            }
+            renderAll();
+            persistState(true);
+        }
+
+        function markPlanMissed(id) {
+            const item = state.plannedTasks.find(t => t.id === id);
+            if (!item) return;
+            item.status = item.status === "Missed" ? "Pending" : "Missed";
+            item.completedAt = null;
+            renderAll();
+            persistState(true);
+        }
+
+        function setMissedReason(id, reason) {
+            const item = state.plannedTasks.find(t => t.id === id);
+            if (!item) return;
+            item.missedReason = reason;
+            renderAll();
+            persistState(false);
+        }
+
+        function toggleCheckPill(id, idx) {
+            const item = state.plannedTasks.find(t => t.id === id);
+            if (!item) return;
+            item.checks[idx].ok = !item.checks[idx].ok;
+            renderAll();
+            persistState(true);
+        }
+
+        function quickLogOffPlan(scope, activity) {
+            const timeStr = getCurrentTimeStr();
+            state.offPlanLogs.unshift({
+                id: "off-" + Date.now() + "-" + Math.floor(Math.random() * 999),
+                scope,
+                activity,
+                time: timeStr,
+                note: ""
+            });
+            showToast(`Logged Off-Plan: ${scope} (${timeStr})`);
+            renderAll();
+            persistState(true);
+        }
+
+        function updateOffPlanNote(id, val) {
+            const log = state.offPlanLogs.find(o => o.id === id);
+            if (log) {
+                log.note = val;
+                renderReportsOnly();
+                persistState(false);
+            }
+        }
+
+        function removeOffPlan(id) {
+            state.offPlanLogs = state.offPlanLogs.filter(o => o.id !== id);
+            renderAll();
+            persistState(true);
+        }
+
+        // =========================================================================
+        // RENDERING UI & REPORTS
+        // =========================================================================
+        function renderAll() {
+            renderAccountabilityBanner();
+            renderMorningList();
+            renderFieldList();
+            renderOffPlanList();
+            renderReportsOnly();
+        }
+
+        function renderAccountabilityBanner() {
+            const totalPlan = state.plannedTasks.length;
+            const donePlan = state.plannedTasks.filter(t => t.status === "Done").length;
+            const totalVerifiedActivities = donePlan + state.offPlanLogs.length;
+            const adherence = totalPlan > 0 ? Math.round((donePlan / totalPlan) * 100) : 0;
+
+            document.getElementById("badge-plan-count").textContent = totalPlan;
+            document.getElementById("badge-done-count").textContent = `${totalVerifiedActivities} Logged`;
+            document.getElementById("adherencePill").textContent = `${adherence}% Plan`;
+
+            const banner = document.getElementById("accountabilityBanner");
+            const dot = document.getElementById("accountabilityDot");
+            const title = document.getElementById("accountabilityTitle");
+            const sub = document.getElementById("accountabilitySub");
+            const pill = document.getElementById("adherencePill");
+
+            if (totalVerifiedActivities === 0) {
+                banner.className = "rounded-2xl p-3.5 border flex items-center justify-between gap-3 transition-colors bg-white border-blue-200 text-blue-950 shadow-2xs";
+                dot.className = "w-3 h-3 rounded-full bg-blue-500 shrink-0 animate-pulse";
+                title.textContent = "0 Field Activities Logged Today";
+                sub.className = "text-[11px] text-blue-700/80";
+                sub.textContent = "Unlogged work = No work done. Tap activities as you complete them.";
+                pill.className = "px-2.5 py-1 rounded-xl text-xs font-extrabold bg-blue-50 border border-blue-200 text-blue-700 shrink-0";
+            } else {
+                const latestTime = state.offPlanLogs[0]?.time || state.plannedTasks.filter(t => t.completedAt).slice(-1)[0]?.completedAt || "Today";
+                banner.className = "rounded-2xl p-3.5 border flex items-center justify-between gap-3 transition-colors bg-blue-600 border-blue-600 text-white shadow-sm";
+                dot.className = "w-3 h-3 rounded-full bg-white shrink-0";
+                title.textContent = `${totalVerifiedActivities} Field ${totalVerifiedActivities === 1 ? "Activity" : "Activities"} Verified Today`;
+                sub.className = "text-[11px] text-blue-100";
+                sub.textContent = `${donePlan}/${totalPlan} planned done • ${state.offPlanLogs.length} off-plan • Latest tap: ${latestTime}`;
+                pill.className = "px-2.5 py-1 rounded-xl text-xs font-extrabold bg-white text-blue-700 border border-white shrink-0";
+            }
+        }
+
+        function renderMorningList() {
+            const container = document.getElementById("morningPlanList");
+            const countLabel = document.getElementById("morningCountLabel");
+            const resetBtn = document.getElementById("btnResetDay");
+
+            countLabel.textContent = state.plannedTasks.length;
+
+            if (state.plannedTasks.length === 0) {
+                resetBtn.classList.add("hidden");
+                container.innerHTML = `
+                    <div class="text-center py-6 px-4 rounded-xl border border-dashed border-blue-200 text-blue-400 text-xs">
+                        Tap any Tank Sudha or Euro Motors button above to add it here.
+                    </div>
+                `;
+                return;
+            }
+
+            resetBtn.classList.remove("hidden");
+            container.innerHTML = state.plannedTasks.map((t, i) => {
+                const isTank = t.brand === "Tank Sudha";
+                const badgeClass = isTank ? "bg-blue-600 text-white" : "bg-white border border-blue-300 text-blue-800";
+                const scopeText = isTank ? "Tank Sudha" : `Euro Motors • ${t.branch}`;
+
+                return `
+                    <div class="p-3 rounded-xl border border-blue-100 bg-blue-50/40 space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <span class="text-xs font-bold text-blue-400">#${i + 1}</span>
+                                <span class="px-2 py-0.5 rounded-md text-[11px] font-bold ${badgeClass}">${scopeText}</span>
+                                <span class="text-xs sm:text-sm font-bold text-blue-950">${t.label}</span>
+                            </div>
+                            <button type="button" onclick="removePlanItem('${t.id}')" class="text-slate-400 hover:text-blue-700 px-2 py-1 text-xs font-bold">✕</button>
+                        </div>
+                        <input type="text"
+                            value="${escapeHtml(t.note)}"
+                            oninput="updatePlanNote('${t.id}', this.value)"
+                            placeholder="${t.placeholder}"
+                            class="w-full px-3 py-2 rounded-lg border border-blue-200 bg-white text-xs text-slate-700 focus:outline-none focus:border-blue-500">
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function renderFieldList() {
+            const container = document.getElementById("fieldPlannedList");
+
+            if (state.plannedTasks.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-6 px-4 rounded-xl border border-dashed border-blue-200 space-y-2">
+                        <p class="text-xs font-semibold text-blue-900">No morning plan was set today.</p>
+                        <p class="text-[11px] text-slate-500">Set a plan in Tab 1 or use the Off-Plan buttons below as you work.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = state.plannedTasks.map((t, i) => {
+                const isTank = t.brand === "Tank Sudha";
+                const scopeText = isTank ? "Tank Sudha" : `Euro Motors • ${t.branch}`;
+                const badgeClass = isTank ? "bg-blue-600 text-white" : "bg-white border border-blue-300 text-blue-800";
+                const isDone = t.status === "Done";
+                const isMissed = t.status === "Missed";
+
+                const cardBorder = isDone
+                    ? "border-blue-400 bg-blue-50/50"
+                    : isMissed
+                        ? "border-blue-200 bg-slate-50"
+                        : "border-blue-100 bg-white";
+
+                const checksHtml = isDone ? `
+                    <div class="pt-2 border-t border-blue-200/70 space-y-2">
+                        <div class="flex flex-wrap gap-1.5">
+                            ${t.checks.map((c, cIdx) => `
+                                <button type="button" onclick="toggleCheckPill('${t.id}', ${cIdx})"
+                                    class="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${
+                                        c.ok ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-slate-300 text-slate-400 line-through"
+                                    }">
+                                    ${c.ok ? "✓" : "✕"} ${c.label}
+                                </button>
+                            `).join("")}
+                        </div>
+                        <input type="text"
+                            value="${escapeHtml(t.note)}"
+                            oninput="updatePlanNote('${t.id}', this.value)"
+                            placeholder="Optional quick field note..."
+                            class="w-full px-3 py-1.5 rounded-lg border border-blue-200 bg-white text-xs focus:outline-none focus:border-blue-500">
+                    </div>
+                ` : "";
+
+                const missedHtml = isMissed ? `
+                    <div class="pt-2 border-t border-blue-200 space-y-2">
+                        <p class="text-[11px] font-bold text-blue-950">Tap why this was missed:</p>
+                        <div class="flex flex-wrap gap-1.5">
+                            ${MISSED_REASONS.map(r => `
+                                <button type="button" onclick="setMissedReason('${t.id}', '${r}')"
+                                    class="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${
+                                        t.missedReason === r ? "bg-blue-900 text-white border-blue-900" : "bg-white text-blue-800 border-blue-200"
+                                    }">
+                                    ${r}
+                                </button>
+                            `).join("")}
+                        </div>
+                        <input type="text"
+                            value="${escapeHtml(t.missedReason)}"
+                            oninput="setMissedReason('${t.id}', this.value)"
+                            placeholder="Or type short reason..."
+                            class="w-full px-3 py-1.5 rounded-lg border border-blue-200 bg-white text-xs focus:outline-none focus:border-blue-500">
+                    </div>
+                ` : "";
+
+                return `
+                    <div class="p-3.5 rounded-2xl border ${cardBorder} space-y-2.5 transition">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${badgeClass}">${scopeText}</span>
+                                    ${isDone ? `<span class="text-[11px] font-bold text-blue-700">✓ Done at ${t.completedAt}</span>` : ""}
+                                </div>
+                                <h4 class="text-sm font-bold text-blue-950 mt-0.5">${t.label}</h4>
+                                ${t.note && !isDone ? `<p class="text-xs text-slate-500 truncate">${escapeHtml(t.note)}</p>` : ""}
+                            </div>
+
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <button type="button" onclick="togglePlanDone('${t.id}')"
+                                    class="px-3.5 py-2.5 rounded-xl font-extrabold text-xs transition active:scale-95 ${
+                                        isDone
+                                            ? "bg-blue-600 text-white shadow-2xs"
+                                            : "bg-blue-950 hover:bg-blue-700 text-white"
+                                    }">
+                                    ${isDone ? "✓ Done" : "Tap Done"}
+                                </button>
+                                <button type="button" onclick="markPlanMissed('${t.id}')"
+                                    class="px-2.5 py-2.5 rounded-xl font-bold text-xs border transition active:scale-95 ${
+                                        isMissed
+                                            ? "bg-blue-900 text-white border-blue-900"
+                                            : "bg-white text-blue-700 border-blue-200 hover:bg-blue-50"
+                                    }">
+                                    Missed
+                                </button>
+                            </div>
+                        </div>
+
+                        ${checksHtml}
+                        ${missedHtml}
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function renderOffPlanList() {
+            const container = document.getElementById("offPlanList");
+            if (state.offPlanLogs.length === 0) {
+                container.innerHTML = `<p class="text-[11px] text-slate-400 italic">No off-plan field activities tapped today.</p>`;
+                return;
+            }
+
+            container.innerHTML = state.offPlanLogs.map(o => `
+                <div class="p-3 rounded-xl border border-blue-200 bg-blue-50/50 space-y-1.5">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-900 font-extrabold text-[10px]">OFF-PLAN • ${o.time}</span>
+                            <span class="text-xs font-bold text-blue-950">${o.scope}: ${o.activity}</span>
+                        </div>
+                        <button type="button" onclick="removeOffPlan('${o.id}')" class="text-xs text-slate-400 hover:text-blue-700 px-1.5">✕</button>
+                    </div>
+                    <input type="text"
+                        value="${escapeHtml(o.note)}"
+                        oninput="updateOffPlanNote('${o.id}', this.value)"
+                        placeholder="Optional: Client/site name or why off-plan..."
+                        class="w-full px-2.5 py-1.5 rounded-lg border border-blue-200 bg-white text-xs focus:outline-none focus:border-blue-500">
+                </div>
+            `).join("");
+        }
+
+        function renderReportsOnly() {
+            const dateVal = document.getElementById("trackingDate").value;
+
+            // 1. Morning Report
+            let mLines = [
+                `☀️ *MORNING PLAN — ABDULLAH* (${dateVal})`,
+                `Planned Activities: ${state.plannedTasks.length}`,
+                `----------------------------`
+            ];
+            if (state.plannedTasks.length === 0) {
+                mLines.push(`(No morning plan selected yet)`);
+            } else {
+                state.plannedTasks.forEach((t, i) => {
+                    const scope = t.branch ? `${t.brand} [${t.branch}]` : t.brand;
+                    mLines.push(`${i + 1}. *${scope}* — ${t.label}${t.note ? ` (${t.note})` : ""}`);
+                });
+            }
+            mLines.push(`----------------------------`);
+            mLines.push(`Will check in each task as completed.`);
+            document.getElementById("morningReportText").value = mLines.join("\n");
+
+            // 2. EOD Report
+            const totalPlan = state.plannedTasks.length;
+            const donePlan = state.plannedTasks.filter(t => t.status === "Done").length;
+            const adherence = totalPlan > 0 ? Math.round((donePlan / totalPlan) * 100) : 0;
+            const totalLogged = donePlan + state.offPlanLogs.length;
+
+            let eLines = [
+                `📊 *EOD FIELD REPORT — ABDULLAH* (${dateVal})`,
+                `Verified Activities: *${totalLogged}* | Plan Adherence: *${adherence}%* (${donePlan}/${totalPlan})`,
+                `----------------------------`
+            ];
+
+            if (totalLogged === 0) {
+                eLines.push(`⚠️ *NO FIELD ACTIVITIES LOGGED TODAY*`);
+            }
+
+            if (totalPlan > 0) {
+                eLines.push(`\n📋 *PLANNED WORK:*`);
+                state.plannedTasks.forEach((t, i) => {
+                    const scope = t.branch ? `${t.brand} [${t.branch}]` : t.brand;
+                    if (t.status === "Done") {
+                        const failedChecks = t.checks.filter(c => !c.ok).map(c => c.label);
+                        eLines.push(`${i + 1}. ✅ *${scope} — ${t.label}* (Done @ ${t.completedAt})`);
+                        if (t.note) eLines.push(`   • Note: ${t.note}`);
+                        if (failedChecks.length > 0) eLines.push(`   • ⚠️ Issue flagged: ${failedChecks.join(", ")}`);
+                    } else if (t.status === "Missed") {
+                        eLines.push(`${i + 1}. ❌ *${scope} — ${t.label}* (MISSED)`);
+                        eLines.push(`   • Reason: ${t.missedReason || "No reason given"}`);
+                    } else {
+                        eLines.push(`${i + 1}. ⏳ *${scope} — ${t.label}* (NOT COMPLETED)`);
+                    }
+                });
+            }
+
+            if (state.offPlanLogs.length > 0) {
+                eLines.push(`\n⚡ *OFF-PLAN / EXTRA FIELD WORK (${state.offPlanLogs.length}):*`);
+                state.offPlanLogs.forEach((o, i) => {
+                    eLines.push(`${i + 1}. [${o.time}] *${o.scope}* — ${o.activity}${o.note ? ` (${o.note})` : ""}`);
+                });
+            }
+
+            document.getElementById("eodReportText").value = eLines.join("\n");
+        }
+
+        // =========================================================================
+        // CLIPBOARD, EXPORT & MODAL HELPERS
+        // =========================================================================
+        function copyReport(textareaId, label) {
+            const textarea = document.getElementById(textareaId);
+            const details = textarea.closest("details");
+            if (details) details.open = true;
+
+            textarea.select();
+            textarea.setSelectionRange(0, 99999);
+            try {
+                document.execCommand("copy");
+                showToast(`${label} copied! Paste directly in WhatsApp.`);
+            } catch (e) {
+                showToast("Select the text box to copy manually.");
+            }
+            window.getSelection().removeAllRanges();
+        }
+
+        function downloadTextAudit() {
+            const content = `${document.getElementById("morningReportText").value}\n\n====================================\n\n${document.getElementById("eodReportText").value}`;
+            const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `Abdullah_Field_Log_${document.getElementById("trackingDate").value || "report"}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("Audit file downloaded");
+        }
+
+        function openClearModal() {
+            const modal = document.getElementById("confirmModal");
+            modal.classList.remove("hidden");
+            modal.classList.add("flex");
+        }
+
+        function closeClearModal() {
+            const modal = document.getElementById("confirmModal");
+            modal.classList.add("hidden");
+            modal.classList.remove("flex");
+        }
+
+        function confirmClearPlan() {
+            state.plannedTasks = [];
+            state.offPlanLogs = [];
+            closeClearModal();
+            showToast("Reset complete");
+            renderAll();
+            persistState(true);
+        }
+
+        function loadDemoData() {
+            state.plannedTasks = [
+                {
+                    id: "d1",
+                    brand: "Tank Sudha",
+                    branch: null,
+                    roleKey: "tank-inspection",
+                    label: "Site Inspection (Pre-Order)",
+                    placeholder: PRESET_ROLES["tank-inspection"].placeholder,
+                    note: "Mr. Perera site — Nugegoda",
+                    status: "Done",
+                    completedAt: "09:45 AM",
+                    checks: [
+                        { label: "Site assessed before team", ok: true },
+                        { label: "Order details given to team", ok: true }
+                    ],
+                    missedReason: ""
+                },
+                {
+                    id: "d2",
+                    brand: "Tank Sudha",
+                    branch: null,
+                    roleKey: "tank-pitching",
+                    label: "Brand & Service Pitching",
+                    placeholder: PRESET_ROLES["tank-pitching"].placeholder,
+                    note: "Maharagama hardware dealers",
+                    status: "Done",
+                    completedAt: "11:20 AM",
+                    checks: [
+                        { label: "Tank Sudha services pitched", ok: true },
+                        { label: "Contact/lead captured", ok: true }
+                    ],
+                    missedReason: ""
+                },
+                {
+                    id: "d3",
+                    brand: "Euro Motors",
+                    branch: "Havlock",
+                    roleKey: "euro-compliance",
+                    label: "Quality & Uniform Compliance",
+                    placeholder: PRESET_ROLES["euro-compliance"].placeholder,
+                    note: "All staff checked",
+                    status: "Done",
+                    completedAt: "02:10 PM",
+                    checks: [
+                        { label: "Work quality OK", ok: true },
+                        { label: "Staff in uniform", ok: true },
+                        { label: "Branch compliance OK", ok: true }
+                    ],
+                    missedReason: ""
+                },
+                {
+                    id: "d4",
+                    brand: "Euro Motors",
+                    branch: "Dehiwala",
+                    roleKey: "euro-stock",
+                    label: "Stock & Ops Check",
+                    placeholder: PRESET_ROLES["euro-stock"].placeholder,
+                    note: "",
+                    status: "Done",
+                    completedAt: "03:35 PM",
+                    checks: [
+                        { label: "Stock levels sufficient", ok: true },
+                        { label: "Smooth operations OK", ok: true }
+                    ],
+                    missedReason: ""
+                },
+                {
+                    id: "d5",
+                    brand: "Euro Motors",
+                    branch: "Kadawala",
+                    roleKey: "euro-invoicing",
+                    label: "Invoicing & Finance Follow-up",
+                    placeholder: PRESET_ROLES["euro-invoicing"].placeholder,
+                    note: "",
+                    status: "Missed",
+                    completedAt: null,
+                    checks: PRESET_ROLES["euro-invoicing"].checks.map(c => ({ label: c, ok: true })),
+                    missedReason: "Weather / Traffic"
+                }
+            ];
+
+            state.offPlanLogs = [
+                {
+                    id: "off1",
+                    scope: "Tank Sudha",
+                    activity: "Order Quality Check",
+                    time: "04:30 PM",
+                    note: "Wellawatte ongoing tank installation"
+                }
+            ];
+
+            renderAll();
+            switchTab("field");
+            showToast("Sample field day loaded!");
+            persistState(true);
+        }
+
+        let toastTimer;
+        function showToast(msg) {
+            const toast = document.getElementById("toast");
+            document.getElementById("toastMessage").textContent = msg;
+            toast.classList.remove("translate-y-20", "opacity-0");
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.classList.add("translate-y-20", "opacity-0");
+            }, 2600);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return "";
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
